@@ -18,7 +18,7 @@ export interface IOrder extends Document {
   items: IOrderItem[];
   totalAmount: number;
   paymentMethod: 'Cash' | 'Wallet' | 'PayLater' | 'Mixed';
-  paymentStatus: 'Paid' | 'Unpaid' | 'Partial' | 'AdvanceUsed';
+  paymentStatus: 'Paid' | 'Unpaid' | 'Partial' | 'AdvanceUsed' | 'Cancelled';
   orderStatus: 'Pending' | 'Confirmed' | 'Completed' | 'Cancelled';
   paidAmount: number;
   unpaidAmount: number;
