@@ -120,7 +120,7 @@ export default function AdminDashboard() {
     window.open(`https://wa.me/?text=${encodeURIComponent(msg)}`, '_blank');
   };
 
-  const departments = [...new Set(report?.orders.map((o) => o.department) || [])];
+  const departments = Array.from(new Set(report?.orders.map((o) => o.department) || []));
 
   const filteredOrders = (report?.orders || []).filter((order) => {
     const matchSearch = !search ||

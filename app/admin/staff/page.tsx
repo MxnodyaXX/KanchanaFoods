@@ -120,7 +120,7 @@ export default function StaffPage() {
     return matchSearch && matchDept;
   });
 
-  const departments = [...new Set(staffList.map((s) => s.department))].sort();
+  const departments = Array.from(new Set(staffList.map((s) => s.department))).sort();
 
   const HistoryPanel = ({ staffId }: { staffId: string }) => {
     if (expandedStaff !== staffId || !history) return null;
