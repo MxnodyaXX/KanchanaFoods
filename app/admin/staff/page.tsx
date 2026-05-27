@@ -34,7 +34,7 @@ interface PaymentHistory {
   note: string;
 }
 
-const DEPARTMENTS = ['Science', 'Mathematics', 'English', 'Tamil', 'History', 'Administration', 'Library', 'Physical Education', 'Arts', 'Other'];
+const DEPARTMENTS = ['Protocol', 'Teacher', 'IT Teacher', 'Support Staff', 'Main Office', 'Lab Demo', 'Sport', 'RSS', 'ACC', 'Printing', 'DTM'];
 const ROLES = ['Teacher', 'Admin Staff', 'Other'];
 
 const emptyForm = { fullName: '', department: '', phone: '', role: 'Teacher', isActive: true };
