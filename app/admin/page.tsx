@@ -251,6 +251,14 @@ export default function AdminDashboard() {
     return matchSearch && matchStatus && matchDept;
   });
 
+  // Group orders by staff member
+  const groupedOrders = filteredOrders.reduce((groups: Record<string, { staffName: string; department: string; orders: Order[] }>, order) => {
+    const key = order.staffName + '|' + order.department;
+    if (!groups[key]) groups[key] = { staffName: order.staffName, department: order.department, orders: [] };
+    groups[key].orders.push(order);
+    return groups;
+  }, {});
+
   const OrderActions = ({ order }: { order: Order }) => (
     <div className="flex items-center gap-1.5 flex-wrap">
       {/* Mark as Paid — for any unpaid or partial order */}
@@ -423,48 +431,64 @@ export default function AdminDashboard() {
           </div>
         ) : (
           <>
-            {/* Mobile card list */}
-            <div className="md:hidden divide-y divide-gray-50">
-              {filteredOrders.map((order) => (
-                <div key={order._id} className="p-4 space-y-3">
-                  <div className="flex items-start justify-between gap-2">
-                    <div>
-                      <p className="font-semibold text-gray-900">{order.staffName}</p>
-                      <p className="text-xs text-gray-400">{order.department}</p>
-                      <span className={`inline-flex items-center gap-1 mt-1 text-xs px-2 py-0.5 rounded-full font-medium ${
-                        order.mealType === 'Breakfast' ? 'bg-amber-100 text-amber-700' : 'bg-primary-100 text-primary-700'
+            {/* Mobile: grouped cards */}
+            <div className="md:hidden divide-y divide-gray-100">
+              {Object.values(groupedOrders).map(({ staffName, department, orders: staffOrders }) => {
+                const staffTotal = staffOrders.reduce((s, o) => s + o.totalAmount, 0);
+                const staffUnpaid = staffOrders.reduce((s, o) => s + o.unpaidAmount, 0);
+                return (
+                  <div key={staffName + department} className="p-4 space-y-3">
+                    {/* Staff header */}
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="font-bold text-gray-900">{staffName}</p>
+                        <p className="text-xs text-gray-400">{department}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-gray-900">Rs. {staffTotal.toFixed(2)}</p>
+                        {staffUnpaid > 0 && <p className="text-xs text-red-500">Due: Rs. {staffUnpaid.toFixed(2)}</p>}
+                      </div>
+                    </div>
+                    {/* Each order row */}
+                    {staffOrders.map((order) => (
+                      <div key={order._id} className={`rounded-xl border p-3 space-y-2 ${
+                        order.mealType === 'Breakfast' ? 'border-amber-100 bg-amber-50/40' : 'border-primary-100 bg-primary-50/30'
                       }`}>
-                        {order.mealType === 'Breakfast' ? <Sunrise className="w-3 h-3" /> : <Sun className="w-3 h-3" />}
-                        {order.mealType} · {order.deliveryDate ? format(new Date(order.deliveryDate), 'dd MMM') : ''}
-                      </span>
-                    </div>
-                    <div className="text-right flex-shrink-0">
-                      <p className="font-bold text-gray-900">Rs. {order.totalAmount.toFixed(2)}</p>
-                      {order.unpaidAmount > 0 && (
-                        <p className="text-xs text-red-500">Due: Rs. {order.unpaidAmount.toFixed(2)}</p>
-                      )}
-                    </div>
-                  </div>
-                  <div className="text-xs text-gray-600 space-y-0.5">
-                    {order.items.map((item, i) => (
-                      <span key={i} className="inline-block mr-2 bg-gray-100 px-2 py-0.5 rounded">{item.quantity}× {item.itemName}</span>
+                        <div className="flex items-center justify-between">
+                          <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${
+                            order.mealType === 'Breakfast' ? 'bg-amber-100 text-amber-700' : 'bg-primary-100 text-primary-700'
+                          }`}>
+                            {order.mealType === 'Breakfast' ? <Sunrise className="w-3 h-3" /> : <Sun className="w-3 h-3" />}
+                            {order.mealType} · {order.deliveryDate ? format(new Date(order.deliveryDate), 'dd MMM') : ''}
+                          </span>
+                          <span className="text-sm font-semibold text-gray-900">Rs. {order.totalAmount.toFixed(2)}</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {order.items.map((item, i) => (
+                            <span key={i} className="text-xs bg-white border border-gray-100 px-2 py-0.5 rounded-lg text-gray-700">{item.quantity}× {item.itemName}</span>
+                          ))}
+                        </div>
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-1.5">
+                            <PaymentBadge status={order.paymentStatus} />
+                            <OrderStatusBadge status={order.orderStatus} />
+                          </div>
+                        </div>
+                        <OrderActions order={order} />
+                      </div>
                     ))}
                   </div>
-                  <div className="flex items-center gap-1.5">
-                    <PaymentBadge status={order.paymentStatus} />
-                    <OrderStatusBadge status={order.orderStatus} />
-                  </div>
-                  <OrderActions order={order} />
-                </div>
-              ))}
+                );
+              })}
             </div>
 
-            {/* Desktop table */}
+            {/* Desktop: grouped table */}
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-gray-50 border-b border-gray-100">
                   <tr>
                     <th className="table-header">Staff</th>
+                    <th className="table-header">Meal</th>
                     <th className="table-header">Items</th>
                     <th className="table-header">Amount</th>
                     <th className="table-header">Payment</th>
@@ -472,34 +496,49 @@ export default function AdminDashboard() {
                     <th className="table-header">Actions</th>
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-gray-50">
-                  {filteredOrders.map((order) => (
-                    <tr key={order._id} className="hover:bg-gray-50 transition-colors">
-                      <td className="table-cell">
-                        <p className="font-medium text-gray-900">{order.staffName}</p>
-                        <p className="text-xs text-gray-400">{order.department}</p>
-                        <span className={`inline-flex items-center gap-1 mt-1 text-xs px-2 py-0.5 rounded-full font-medium ${
-                          order.mealType === 'Breakfast' ? 'bg-amber-100 text-amber-700' : 'bg-primary-100 text-primary-700'
-                        }`}>
-                          {order.mealType === 'Breakfast' ? <Sunrise className="w-3 h-3" /> : <Sun className="w-3 h-3" />}
-                          {order.mealType} · {order.deliveryDate ? format(new Date(order.deliveryDate), 'dd MMM') : ''}
-                        </span>
-                      </td>
-                      <td className="table-cell">
-                        {order.items.map((item, i) => (
-                          <p key={i} className="text-xs text-gray-600">{item.quantity}× {item.itemName}</p>
-                        ))}
-                      </td>
-                      <td className="table-cell">
-                        <p className="font-semibold text-gray-900">Rs. {order.totalAmount.toFixed(2)}</p>
-                        {order.unpaidAmount > 0 && (
-                          <p className="text-xs text-red-500">Due: Rs. {order.unpaidAmount.toFixed(2)}</p>
-                        )}
-                      </td>
-                      <td className="table-cell"><PaymentBadge status={order.paymentStatus} /></td>
-                      <td className="table-cell"><OrderStatusBadge status={order.orderStatus} /></td>
-                      <td className="table-cell"><OrderActions order={order} /></td>
-                    </tr>
+                <tbody className="divide-y divide-gray-100">
+                  {Object.values(groupedOrders).map(({ staffName, department, orders: staffOrders }) => (
+                    staffOrders.map((order, idx) => (
+                      <tr key={order._id} className={`hover:bg-gray-50 transition-colors ${idx === 0 ? 'border-t-2 border-gray-200' : ''}`}>
+                        {/* Show staff name only on first row */}
+                        <td className="table-cell">
+                          {idx === 0 ? (
+                            <>
+                              <p className="font-semibold text-gray-900">{staffName}</p>
+                              <p className="text-xs text-gray-400">{department}</p>
+                              {staffOrders.length > 1 && (
+                                <p className="text-xs text-primary-600 font-medium mt-0.5">{staffOrders.length} orders</p>
+                              )}
+                            </>
+                          ) : (
+                            <span className="text-xs text-gray-300 pl-2">↳</span>
+                          )}
+                        </td>
+                        <td className="table-cell">
+                          <span className={`inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full font-medium ${
+                            order.mealType === 'Breakfast' ? 'bg-amber-100 text-amber-700' : 'bg-primary-100 text-primary-700'
+                          }`}>
+                            {order.mealType === 'Breakfast' ? <Sunrise className="w-3 h-3" /> : <Sun className="w-3 h-3" />}
+                            {order.mealType}
+                          </span>
+                          <p className="text-xs text-gray-400 mt-0.5">{order.deliveryDate ? format(new Date(order.deliveryDate), 'dd MMM') : ''}</p>
+                        </td>
+                        <td className="table-cell">
+                          {order.items.map((item, i) => (
+                            <p key={i} className="text-xs text-gray-600">{item.quantity}× {item.itemName}</p>
+                          ))}
+                        </td>
+                        <td className="table-cell">
+                          <p className="font-semibold text-gray-900">Rs. {order.totalAmount.toFixed(2)}</p>
+                          {order.unpaidAmount > 0 && (
+                            <p className="text-xs text-red-500">Due: Rs. {order.unpaidAmount.toFixed(2)}</p>
+                          )}
+                        </td>
+                        <td className="table-cell"><PaymentBadge status={order.paymentStatus} /></td>
+                        <td className="table-cell"><OrderStatusBadge status={order.orderStatus} /></td>
+                        <td className="table-cell"><OrderActions order={order} /></td>
+                      </tr>
+                    ))
                   ))}
                 </tbody>
               </table>
