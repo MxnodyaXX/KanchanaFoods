@@ -140,48 +140,38 @@ export default function OrderPage() {
     setError('');
     setSubmitting(true);
 
-    const results: OrderResult[] = [];
-    let failed = false;
+    // All items go into ONE order — mealType and deliveryDate based on what's in the cart
+    const hasLunch = lunchCart.length > 0;
+    const primaryMealType = hasLunch ? 'Lunch' : 'Breakfast';
+    const deliveryDate = hasLunch ? today : tomorrow;
 
-    const submitGroup = async (
-      items: CartItem[],
-      mealType: 'Breakfast' | 'Lunch',
-      deliveryDate: Date
-    ) => {
-      if (items.length === 0) return;
+    try {
       const res = await fetch('/api/orders', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           staffId: selectedStaff._id,
-          items,
+          items: cart,
           paymentMethod,
           note,
-          mealType,
+          mealType: primaryMealType,
           deliveryDate: deliveryDate.toISOString(),
         }),
       });
       const data = await res.json();
       if (data.success) {
-        results.push({
-          mealType,
+        setOrderResults([{
+          mealType: primaryMealType,
           totalAmount: data.data.totalAmount,
           paymentStatus: data.data.paymentStatus,
           deliveryDate: deliveryDate.toISOString(),
-        });
+        }]);
+        setSubmitted(true);
       } else {
-        failed = true;
         setError(data.error || 'Failed to place order.');
       }
-    };
-
-    await submitGroup(breakfastCart, 'Breakfast', tomorrow);
-    if (!failed) await submitGroup(lunchCart, 'Lunch', today);
-
-    setSubmitting(false);
-    if (!failed && results.length > 0) {
-      setOrderResults(results);
-      setSubmitted(true);
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -203,39 +193,27 @@ export default function OrderPage() {
           <CheckCircle className="w-16 h-16 text-primary-500 mx-auto mb-4" />
           <h2 className="text-2xl font-bold text-gray-900 mb-2">Order Placed!</h2>
           <p className="text-gray-500 mb-5">Your order has been submitted successfully.</p>
-          <div className="space-y-3 mb-6">
-            {orderResults.map((r, i) => (
-              <div key={i} className={`rounded-xl p-4 text-left ${r.mealType === 'Breakfast' ? 'bg-amber-50' : 'bg-primary-50'}`}>
-                <div className="flex items-center gap-2 mb-1">
-                  {r.mealType === 'Breakfast' ? (
-                    <Sunrise className="w-4 h-4 text-amber-600" />
-                  ) : (
-                    <Sun className="w-4 h-4 text-primary-600" />
-                  )}
-                  <span className={`font-semibold text-sm ${r.mealType === 'Breakfast' ? 'text-amber-700' : 'text-primary-700'}`}>
-                    {r.mealType}
-                  </span>
-                </div>
-                <p className="text-xs text-gray-500 flex items-center gap-1">
-                  <CalendarDays className="w-3 h-3" />
-                  Delivery: {format(new Date(r.deliveryDate), 'EEEE, dd MMMM yyyy')}
-                </p>
-                <div className="flex justify-between items-center mt-2">
-                  <span className="text-sm text-gray-600">Total</span>
-                  <span className="font-bold text-gray-900">Rs. {r.totalAmount.toFixed(2)}</span>
-                </div>
-                <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-xs font-medium ${
-                  r.paymentStatus === 'Paid' || r.paymentStatus === 'AdvanceUsed'
-                    ? 'bg-green-100 text-green-700'
-                    : r.paymentStatus === 'Partial'
-                    ? 'bg-yellow-100 text-yellow-700'
-                    : 'bg-red-100 text-red-700'
-                }`}>
-                  {r.paymentStatus === 'AdvanceUsed' ? 'Paid via Wallet' : r.paymentStatus}
-                </span>
+          {orderResults[0] && (
+            <div className="bg-primary-50 rounded-xl p-4 text-left mb-6">
+              <p className="text-xs text-gray-500 flex items-center gap-1 mb-2">
+                <CalendarDays className="w-3 h-3" />
+                Delivery: {format(new Date(orderResults[0].deliveryDate), 'EEEE, dd MMMM yyyy')}
+              </p>
+              <div className="flex justify-between items-center mb-2">
+                <span className="text-sm text-gray-600">Total Amount</span>
+                <span className="font-bold text-gray-900">Rs. {orderResults[0].totalAmount.toFixed(2)}</span>
               </div>
-            ))}
-          </div>
+              <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                orderResults[0].paymentStatus === 'Paid' || orderResults[0].paymentStatus === 'AdvanceUsed'
+                  ? 'bg-green-100 text-green-700'
+                  : orderResults[0].paymentStatus === 'Partial'
+                  ? 'bg-yellow-100 text-yellow-700'
+                  : 'bg-red-100 text-red-700'
+              }`}>
+                {orderResults[0].paymentStatus === 'AdvanceUsed' ? 'Paid via Wallet' : orderResults[0].paymentStatus}
+              </span>
+            </div>
+          )}
           <button
             onClick={() => {
               setSubmitted(false);
