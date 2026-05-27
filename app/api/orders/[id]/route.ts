@@ -39,8 +39,8 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       return NextResponse.json({ success: false, error: 'Completed orders cannot be cancelled.' }, { status: 400 });
     }
 
-    // Handle cash payment confirmation
-    if (cashReceived !== undefined && order.paymentMethod === 'Cash') {
+    // Handle payment confirmation (cash received for any unpaid order)
+    if (cashReceived !== undefined) {
       const received = Number(cashReceived);
       const orderTotal = order.totalAmount;
 

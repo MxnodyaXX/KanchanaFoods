@@ -5,11 +5,12 @@ import {
   ShoppingBag, DollarSign, TrendingUp, AlertTriangle,
   Wallet, Search, CheckCircle, XCircle,
   Share2, Printer, RefreshCw, ToggleLeft, ToggleRight,
-  Sunrise, Sun, SlidersHorizontal, X,
+  Sunrise, Sun, SlidersHorizontal, X, Plus, Save,
+  Trash2,
 } from 'lucide-react';
 import { StatsCard } from '@/components/admin/StatsCard';
 import { PaymentBadge, OrderStatusBadge } from '@/components/admin/PaymentBadge';
-import { format } from 'date-fns';
+import { format, addDays } from 'date-fns';
 
 interface Order {
   _id: string;
@@ -42,6 +43,38 @@ interface DailyStatus {
   cutoffTime: string;
 }
 
+interface Staff {
+  _id: string;
+  fullName: string;
+  department: string;
+  walletBalance: number;
+  unpaidBalance: number;
+}
+
+interface MenuItem {
+  _id: string;
+  name: string;
+  category: string;
+  price: number;
+  mealType: 'Breakfast' | 'Lunch';
+  isAvailable: boolean;
+  availableToday: boolean;
+}
+
+interface CartItem {
+  menuItemId: string;
+  itemName: string;
+  price: number;
+  quantity: number;
+}
+
+const emptyOrderForm = {
+  staffId: '',
+  mealType: 'Lunch' as 'Breakfast' | 'Lunch',
+  paymentMethod: 'Cash',
+  note: '',
+};
+
 export default function AdminDashboard() {
   const [report, setReport] = useState<DailyReport | null>(null);
   const [dailyStatus, setDailyStatus] = useState<DailyStatus | null>(null);
@@ -53,6 +86,16 @@ export default function AdminDashboard() {
   const [cashInput, setCashInput] = useState<Record<string, string>>({});
   const [showCashModal, setShowCashModal] = useState<Order | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+
+  // Add order state
+  const [showAddOrder, setShowAddOrder] = useState(false);
+  const [staffList, setStaffList] = useState<Staff[]>([]);
+  const [menuItems, setMenuItems] = useState<MenuItem[]>([]);
+  const [orderForm, setOrderForm] = useState(emptyOrderForm);
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [selectedStaff, setSelectedStaff] = useState<Staff | null>(null);
+  const [savingOrder, setSavingOrder] = useState(false);
+  const [orderError, setOrderError] = useState('');
 
   const loadData = useCallback(async () => {
     try {
@@ -69,6 +112,82 @@ export default function AdminDashboard() {
   }, []);
 
   useEffect(() => { loadData(); }, [loadData]);
+
+  const openAddOrder = async () => {
+    setOrderForm(emptyOrderForm);
+    setCart([]);
+    setSelectedStaff(null);
+    setOrderError('');
+    const [staffRes, menuRes] = await Promise.all([fetch('/api/staff'), fetch('/api/menu')]);
+    const [staffData, menuData] = await Promise.all([staffRes.json(), menuRes.json()]);
+    if (staffData.success) setStaffList(staffData.data);
+    if (menuData.success) setMenuItems(menuData.data);
+    setShowAddOrder(true);
+  };
+
+  const handleStaffSelect = (staffId: string) => {
+    const s = staffList.find((s) => s._id === staffId) || null;
+    setSelectedStaff(s);
+    setOrderForm((f) => ({ ...f, staffId }));
+  };
+
+  const addToCart = (item: MenuItem) => {
+    setCart((prev) => {
+      const existing = prev.find((c) => c.menuItemId === item._id);
+      if (existing) return prev.map((c) => c.menuItemId === item._id ? { ...c, quantity: c.quantity + 1 } : c);
+      return [...prev, { menuItemId: item._id, itemName: item.name, price: item.price, quantity: 1 }];
+    });
+  };
+
+  const removeFromCart = (menuItemId: string) => {
+    setCart((prev) => prev.filter((c) => c.menuItemId !== menuItemId));
+  };
+
+  const adjustQty = (menuItemId: string, delta: number) => {
+    setCart((prev) => prev.map((c) => {
+      if (c.menuItemId !== menuItemId) return c;
+      const qty = c.quantity + delta;
+      return qty <= 0 ? c : { ...c, quantity: qty };
+    }));
+  };
+
+  const cartTotal = cart.reduce((s, c) => s + c.price * c.quantity, 0);
+
+  const handleSubmitOrder = async () => {
+    if (!orderForm.staffId || cart.length === 0) {
+      setOrderError('Please select a staff member and add at least one item.');
+      return;
+    }
+    setSavingOrder(true);
+    setOrderError('');
+    try {
+      const deliveryDate = orderForm.mealType === 'Breakfast'
+        ? addDays(new Date(), 1)
+        : new Date();
+
+      const res = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          staffId: orderForm.staffId,
+          items: cart,
+          paymentMethod: orderForm.paymentMethod,
+          mealType: orderForm.mealType,
+          deliveryDate,
+          note: orderForm.note,
+        }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        setShowAddOrder(false);
+        await loadData();
+      } else {
+        setOrderError(data.error || 'Failed to create order.');
+      }
+    } finally {
+      setSavingOrder(false);
+    }
+  };
 
   const toggleOrders = async () => {
     if (!dailyStatus) return;
@@ -134,19 +253,25 @@ export default function AdminDashboard() {
 
   const OrderActions = ({ order }: { order: Order }) => (
     <div className="flex items-center gap-1.5 flex-wrap">
-      {order.paymentMethod === 'Cash' && order.paymentStatus === 'Unpaid' && (
-        <button onClick={() => setShowCashModal(order)}
-          className="text-xs bg-primary-50 hover:bg-primary-100 text-primary-700 px-2.5 py-1.5 rounded-lg font-medium transition-colors">
+      {/* Mark as Paid — for any unpaid or partial order */}
+      {(order.paymentStatus === 'Unpaid' || order.paymentStatus === 'Partial') && order.orderStatus !== 'Cancelled' && (
+        <button
+          onClick={() => setShowCashModal(order)}
+          disabled={updating === order._id}
+          className="text-xs bg-primary-50 hover:bg-primary-100 text-primary-700 px-2.5 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-50">
           Mark Paid
         </button>
       )}
+      {/* Complete — order delivered to staff */}
       {order.orderStatus !== 'Completed' && order.orderStatus !== 'Cancelled' && (
-        <button onClick={() => updateOrder(order._id, { orderStatus: 'Completed' })}
+        <button
+          onClick={() => updateOrder(order._id, { orderStatus: 'Completed' })}
           disabled={updating === order._id}
           className="text-xs bg-green-50 hover:bg-green-100 text-green-700 px-2.5 py-1.5 rounded-lg font-medium transition-colors disabled:opacity-50">
           Complete
         </button>
       )}
+      {/* Cancel */}
       {order.orderStatus !== 'Cancelled' && order.orderStatus !== 'Completed' && (
         <button
           onClick={() => {
@@ -160,6 +285,10 @@ export default function AdminDashboard() {
         </button>
       )}
     </div>
+  );
+
+  const filteredMenu = menuItems.filter(
+    (m) => m.mealType === orderForm.mealType && m.isAvailable
   );
 
   if (loading) {
@@ -180,7 +309,6 @@ export default function AdminDashboard() {
             <p className="text-xs text-gray-500">Today's Summary</p>
             <p className="text-base font-bold text-gray-900">{format(new Date(), 'EEE, dd MMM yyyy')}</p>
           </div>
-          {/* Mobile: icon-only buttons */}
           <div className="flex items-center gap-1.5">
             <button onClick={loadData} className="p-2 rounded-lg bg-gray-100 hover:bg-gray-200 transition-colors" title="Refresh">
               <RefreshCw className="w-4 h-4 text-gray-600" />
@@ -194,17 +322,23 @@ export default function AdminDashboard() {
           </div>
         </div>
 
-        {/* Order toggle - full width on mobile */}
-        <button onClick={toggleOrders}
-          className={`w-full flex items-center justify-center gap-2 font-semibold py-2.5 px-4 rounded-xl text-sm transition-colors ${
-            dailyStatus?.isOrderOpen
-              ? 'bg-red-50 text-red-700 border border-red-200 hover:bg-red-100'
-              : 'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100'
-          }`}>
-          {dailyStatus?.isOrderOpen
-            ? <><ToggleRight className="w-4 h-4" /> Close Orders for Today</>
-            : <><ToggleLeft className="w-4 h-4" /> Reopen Orders</>}
-        </button>
+        <div className="flex gap-2">
+          <button onClick={toggleOrders}
+            className={`flex-1 flex items-center justify-center gap-2 font-semibold py-2.5 px-4 rounded-xl text-sm transition-colors ${
+              dailyStatus?.isOrderOpen
+                ? 'bg-red-50 text-red-700 border border-red-200 hover:bg-red-100'
+                : 'bg-green-50 text-green-700 border border-green-200 hover:bg-green-100'
+            }`}>
+            {dailyStatus?.isOrderOpen
+              ? <><ToggleRight className="w-4 h-4" /> Close Orders</>
+              : <><ToggleLeft className="w-4 h-4" /> Reopen Orders</>}
+          </button>
+          <button onClick={openAddOrder}
+            className="flex items-center gap-2 font-semibold py-2.5 px-4 rounded-xl text-sm bg-primary-600 hover:bg-primary-700 text-white transition-colors">
+            <Plus className="w-4 h-4" />
+            <span className="hidden sm:inline">Add Order</span>
+          </button>
+        </div>
       </div>
 
       {/* Status Banner */}
@@ -243,7 +377,6 @@ export default function AdminDashboard() {
 
       {/* Orders Section */}
       <div className="card p-0 overflow-hidden">
-        {/* Search + Filter bar */}
         <div className="p-3 sm:p-4 border-b border-gray-100 space-y-2">
           <div className="flex gap-2">
             <div className="relative flex-1">
@@ -317,11 +450,9 @@ export default function AdminDashboard() {
                       <span key={i} className="inline-block mr-2 bg-gray-100 px-2 py-0.5 rounded">{item.quantity}× {item.itemName}</span>
                     ))}
                   </div>
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5">
-                      <PaymentBadge status={order.paymentStatus} />
-                      <OrderStatusBadge status={order.orderStatus} />
-                    </div>
+                  <div className="flex items-center gap-1.5">
+                    <PaymentBadge status={order.paymentStatus} />
+                    <OrderStatusBadge status={order.orderStatus} />
                   </div>
                   <OrderActions order={order} />
                 </div>
@@ -377,23 +508,160 @@ export default function AdminDashboard() {
         )}
       </div>
 
-      {/* Cash Payment Modal */}
+      {/* Cash / Mark Paid Modal */}
       {showCashModal && (
         <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
           <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-sm p-6 shadow-2xl">
-            <h3 className="font-bold text-gray-900 mb-1">Record Cash Payment</h3>
-            <p className="text-sm text-gray-500 mb-4">{showCashModal.staffName} · Rs. {showCashModal.totalAmount.toFixed(2)}</p>
+            <div className="flex items-center justify-between mb-1">
+              <h3 className="font-bold text-gray-900">Mark as Paid</h3>
+              <button onClick={() => setShowCashModal(null)} className="p-1 hover:bg-gray-100 rounded-lg">
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+            <p className="text-sm text-gray-500 mb-1">{showCashModal.staffName} · {showCashModal.paymentMethod}</p>
+            <p className="text-sm font-semibold text-gray-900 mb-4">Order Total: Rs. {showCashModal.totalAmount.toFixed(2)}</p>
             <div className="mb-4">
-              <label className="label">Cash Received (Rs.)</label>
-              <input type="number" className="input text-lg" placeholder={showCashModal.totalAmount.toFixed(2)}
+              <label className="label">Amount Received (Rs.)</label>
+              <input
+                type="number"
+                className="input text-lg"
+                placeholder={showCashModal.totalAmount.toFixed(2)}
                 value={cashInput[showCashModal._id] || ''}
                 onChange={(e) => setCashInput((prev) => ({ ...prev, [showCashModal._id]: e.target.value }))}
-                autoFocus />
+                autoFocus
+              />
               <p className="text-xs text-gray-400 mt-1">Extra amount will be added to staff wallet</p>
             </div>
             <div className="flex gap-2">
               <button onClick={() => setShowCashModal(null)} className="btn-secondary flex-1">Cancel</button>
               <button onClick={() => handleCashPayment(showCashModal)} className="btn-primary flex-1">Confirm</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Add Order Modal */}
+      {showAddOrder && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white rounded-t-2xl sm:rounded-2xl w-full sm:max-w-lg shadow-2xl flex flex-col max-h-[92vh]">
+            {/* Header */}
+            <div className="flex items-center justify-between p-5 border-b border-gray-100">
+              <h3 className="text-lg font-bold text-gray-900">Add Order</h3>
+              <button onClick={() => setShowAddOrder(false)} className="p-1 hover:bg-gray-100 rounded-lg">
+                <X className="w-5 h-5 text-gray-500" />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 p-5 space-y-4">
+              {orderError && (
+                <div className="bg-red-50 text-red-700 text-sm rounded-lg px-3 py-2">{orderError}</div>
+              )}
+
+              {/* Staff */}
+              <div>
+                <label className="label">Staff Member *</label>
+                <select className="input" value={orderForm.staffId} onChange={(e) => handleStaffSelect(e.target.value)}>
+                  <option value="">Select staff...</option>
+                  {staffList.map((s) => (
+                    <option key={s._id} value={s._id}>{s.fullName} — {s.department}</option>
+                  ))}
+                </select>
+                {selectedStaff && (
+                  <div className="mt-2 bg-gray-50 rounded-lg p-2 text-xs flex gap-4">
+                    <span className="text-green-600">Wallet: Rs. {selectedStaff.walletBalance.toFixed(2)}</span>
+                    <span className="text-red-500">Unpaid: Rs. {selectedStaff.unpaidBalance.toFixed(2)}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Meal Type */}
+              <div>
+                <label className="label">Meal Type</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {(['Breakfast', 'Lunch'] as const).map((mt) => (
+                    <button key={mt} type="button"
+                      onClick={() => { setOrderForm((f) => ({ ...f, mealType: mt })); setCart([]); }}
+                      className={`py-2.5 rounded-xl text-sm font-semibold border-2 transition-all ${
+                        orderForm.mealType === mt
+                          ? mt === 'Breakfast' ? 'border-amber-500 bg-amber-50 text-amber-700' : 'border-primary-600 bg-primary-50 text-primary-700'
+                          : 'border-gray-200 text-gray-500 hover:border-gray-300'
+                      }`}>
+                      {mt === 'Breakfast' ? '🌅 Breakfast' : '☀️ Lunch'}
+                    </button>
+                  ))}
+                </div>
+                {orderForm.mealType === 'Breakfast' && (
+                  <p className="text-xs text-amber-600 mt-1.5">Breakfast orders are for tomorrow ({format(addDays(new Date(), 1), 'dd MMM')})</p>
+                )}
+              </div>
+
+              {/* Menu Items */}
+              <div>
+                <label className="label">Menu Items *</label>
+                {filteredMenu.length === 0 ? (
+                  <p className="text-sm text-gray-400 py-2">No {orderForm.mealType} items available today.</p>
+                ) : (
+                  <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                    {filteredMenu.map((item) => {
+                      const inCart = cart.find((c) => c.menuItemId === item._id);
+                      return (
+                        <div key={item._id} className={`flex items-center justify-between p-2.5 rounded-xl border transition-colors ${inCart ? 'border-primary-300 bg-primary-50' : 'border-gray-100 bg-gray-50 hover:bg-gray-100'}`}>
+                          <div>
+                            <p className="text-sm font-medium text-gray-900">{item.name}</p>
+                            <p className="text-xs text-gray-500">Rs. {item.price.toFixed(2)}</p>
+                          </div>
+                          {inCart ? (
+                            <div className="flex items-center gap-2">
+                              <button onClick={() => adjustQty(item._id, -1)} className="w-6 h-6 rounded-full bg-primary-100 text-primary-700 font-bold text-sm flex items-center justify-center hover:bg-primary-200">−</button>
+                              <span className="w-5 text-center text-sm font-bold text-primary-700">{inCart.quantity}</span>
+                              <button onClick={() => adjustQty(item._id, 1)} className="w-6 h-6 rounded-full bg-primary-100 text-primary-700 font-bold text-sm flex items-center justify-center hover:bg-primary-200">+</button>
+                              <button onClick={() => removeFromCart(item._id)} className="ml-1 text-red-400 hover:text-red-600">
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          ) : (
+                            <button onClick={() => addToCart(item)} className="text-xs bg-primary-600 hover:bg-primary-700 text-white px-3 py-1 rounded-lg font-medium">Add</button>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Cart total */}
+              {cart.length > 0 && (
+                <div className="bg-primary-50 rounded-xl p-3 flex items-center justify-between">
+                  <span className="text-sm font-medium text-primary-700">{cart.reduce((s, c) => s + c.quantity, 0)} item(s)</span>
+                  <span className="font-bold text-primary-700">Total: Rs. {cartTotal.toFixed(2)}</span>
+                </div>
+              )}
+
+              {/* Payment Method */}
+              <div>
+                <label className="label">Payment Method</label>
+                <select className="input" value={orderForm.paymentMethod} onChange={(e) => setOrderForm((f) => ({ ...f, paymentMethod: e.target.value }))}>
+                  <option value="Cash">Cash (pay when collecting)</option>
+                  <option value="Wallet">Wallet (deduct from balance)</option>
+                  <option value="PayLater">Pay Later (add to unpaid)</option>
+                </select>
+              </div>
+
+              {/* Note */}
+              <div>
+                <label className="label">Note (Optional)</label>
+                <input className="input" placeholder="Any special instructions..." value={orderForm.note} onChange={(e) => setOrderForm((f) => ({ ...f, note: e.target.value }))} />
+              </div>
+            </div>
+
+            {/* Footer */}
+            <div className="p-5 border-t border-gray-100 flex gap-3">
+              <button onClick={() => setShowAddOrder(false)} className="btn-secondary flex-1">Cancel</button>
+              <button onClick={handleSubmitOrder} disabled={savingOrder || cart.length === 0 || !orderForm.staffId}
+                className="btn-primary flex-1 flex items-center justify-center gap-2 disabled:opacity-50">
+                {savingOrder ? <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" /> : <Save className="w-4 h-4" />}
+                Place Order
+              </button>
             </div>
           </div>
         </div>
