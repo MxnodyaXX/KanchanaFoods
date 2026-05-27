@@ -45,9 +45,12 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
       const orderTotal = order.totalAmount;
 
       if (received >= orderTotal) {
+        // Full payment: clear the unpaid balance that was added at order creation
         order.paidAmount = orderTotal;
         order.unpaidAmount = 0;
         order.paymentStatus = 'Paid';
+        order.orderStatus = 'Confirmed';
+        staff.unpaidBalance = Math.max(0, staff.unpaidBalance - orderTotal);
 
         const change = received - orderTotal;
         if (change > 0) {
@@ -73,10 +76,11 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
           note: `Cash payment received`,
         });
       } else if (received > 0) {
+        // Partial payment: reduce unpaid by what was received
         order.paidAmount = received;
         order.unpaidAmount = orderTotal - received;
         order.paymentStatus = 'Partial';
-        staff.unpaidBalance += order.unpaidAmount;
+        staff.unpaidBalance = Math.max(0, staff.unpaidBalance - received);
 
         await Payment.create({
           staffId: staff._id,
