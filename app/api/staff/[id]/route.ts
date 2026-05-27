@@ -3,11 +3,12 @@ import connectDB from '@/lib/db';
 import Staff from '@/models/Staff';
 import Order from '@/models/Order';
 import Payment from '@/models/Payment';
+import bcrypt from 'bcryptjs';
 
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
   try {
     await connectDB();
-    const staff = await Staff.findById(params.id);
+    const staff = await Staff.findById(params.id).select('-pin');
     if (!staff) {
       return NextResponse.json({ success: false, error: 'Staff not found' }, { status: 404 });
     }
@@ -28,8 +29,11 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     for (const key of allowedFields) {
       if (body[key] !== undefined) updateData[key] = body[key];
     }
+    if (body.pin && body.pin.trim()) {
+      updateData.pin = await bcrypt.hash(body.pin.trim(), 10);
+    }
 
-    const staff = await Staff.findByIdAndUpdate(params.id, updateData, { new: true, runValidators: true });
+    const staff = await Staff.findByIdAndUpdate(params.id, updateData, { new: true, runValidators: true }).select('-pin');
     if (!staff) {
       return NextResponse.json({ success: false, error: 'Staff not found' }, { status: 404 });
     }

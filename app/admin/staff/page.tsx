@@ -37,7 +37,7 @@ interface PaymentHistory {
 const DEPARTMENTS = ['Protocol', 'Teacher', 'IT Teacher', 'Support Staff', 'Main Office', 'Lab Demo', 'Sport', 'RSS', 'ACC', 'Printing', 'DTM'];
 const ROLES = ['Teacher', 'Admin Staff', 'Other'];
 
-const emptyForm = { fullName: '', department: '', phone: '', role: 'Teacher', isActive: true };
+const emptyForm = { fullName: '', department: '', phone: '', pin: '', role: 'Teacher', isActive: true };
 
 export default function StaffPage() {
   const [staffList, setStaffList] = useState<Staff[]>([]);
@@ -68,7 +68,7 @@ export default function StaffPage() {
   const openCreate = () => { setEditStaff(null); setForm(emptyForm); setError(''); setShowForm(true); };
   const openEdit = (s: Staff) => {
     setEditStaff(s);
-    setForm({ fullName: s.fullName, department: s.department, phone: s.phone, role: s.role, isActive: s.isActive });
+    setForm({ fullName: s.fullName, department: s.department, phone: s.phone, pin: '', role: s.role, isActive: s.isActive });
     setError('');
     setShowForm(true);
   };
@@ -412,6 +412,19 @@ export default function StaffPage() {
                     {ROLES.map((r) => <option key={r} value={r}>{r}</option>)}
                   </select>
                 </div>
+              </div>
+              <div>
+                <label className="label">Order Page PIN</label>
+                <input
+                  className="input"
+                  type="password"
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder={editStaff ? 'Leave blank to keep current PIN' : 'Set a PIN (e.g. 1234)'}
+                  value={form.pin}
+                  onChange={(e) => setForm({ ...form, pin: e.target.value })}
+                />
+                <p className="text-xs text-gray-400 mt-1">Staff use this PIN + phone number to log in on the order page.</p>
               </div>
               <label className="flex items-center gap-2 cursor-pointer">
                 <input type="checkbox" checked={form.isActive} onChange={(e) => setForm({ ...form, isActive: e.target.checked })} className="w-4 h-4 text-primary-600 rounded" />

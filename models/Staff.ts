@@ -4,6 +4,7 @@ export interface IStaff extends Document {
   fullName: string;
   department: string;
   phone: string;
+  pin: string;
   role: 'Teacher' | 'Admin Staff' | 'Other';
   walletBalance: number;
   unpaidBalance: number;
@@ -17,6 +18,7 @@ const StaffSchema = new Schema<IStaff>(
     fullName: { type: String, required: true, trim: true },
     department: { type: String, required: true, trim: true },
     phone: { type: String, trim: true, default: '' },
+    pin: { type: String, default: '' },
     role: {
       type: String,
       enum: ['Teacher', 'Admin Staff', 'Other'],

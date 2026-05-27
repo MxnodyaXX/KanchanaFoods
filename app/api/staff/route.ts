@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import connectDB from '@/lib/db';
 import Staff from '@/models/Staff';
+import bcrypt from 'bcryptjs';
 
 export async function GET(request: NextRequest) {
   try {
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest) {
       ];
     }
 
-    const staff = await Staff.find(query).sort({ fullName: 1 });
+    const staff = await Staff.find(query).select('-pin').sort({ fullName: 1 });
     return NextResponse.json({ success: true, data: staff });
   } catch (error) {
     console.error('GET /api/staff error:', error);
@@ -32,16 +33,19 @@ export async function POST(request: NextRequest) {
   try {
     await connectDB();
     const body = await request.json();
-    const { fullName, department, phone, role } = body;
+    const { fullName, department, phone, role, pin } = body;
 
     if (!fullName || !department) {
       return NextResponse.json({ success: false, error: 'Full name and department are required' }, { status: 400 });
     }
 
+    const hashedPin = pin && pin.trim() ? await bcrypt.hash(pin.trim(), 10) : '';
+
     const staff = await Staff.create({
       fullName,
       department,
       phone: phone || '',
+      pin: hashedPin,
       role: role || 'Teacher',
       walletBalance: 0,
       unpaidBalance: 0,
